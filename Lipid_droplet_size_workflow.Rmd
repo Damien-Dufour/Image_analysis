@@ -1,12 +1,4 @@
----
-title: "Workflow_adipocyte_size_measurements"
-author: "Damien Dufour"
-output:
-  pdf_document: default
-  html_document:
-    df_print: paged
-fontsize: 12pt
----
+
    
 # Experiment
 
