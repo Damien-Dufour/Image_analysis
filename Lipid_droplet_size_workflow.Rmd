@@ -1,0 +1,134 @@
+---
+title: "Workflow_adipocyte_size_measurements"
+author: "Damien Dufour"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+fontsize: 12pt
+---
+   
+# Experiment
+
+Plin1 immunostaining on 5µm FFPE sections. 
+
+Plin1 antibody : CST9349  1/1000, host = rabbit.
+
+# Analysis on QuPath 
+
+Create a QuPath project, add the images and add the file "lipid_droplet_size.json" in the folder "classifiers/pixel_classifiers"
+
+```{}
+# check if the file is ok 
+library(rjson)
+fromJSON(file = "../QP_analysis/classifiers/pixel_classifiers/lipid_droplet_size.json")
+
+```
+
+On QuPath, create class "lipid droplet" and draw annotations for each image with the genotype/treatment as class.
+
+Load the pixel classifier "lipid_droplet_size" (Classify>Pixel classification>Load pixel classifier)
+
+Parameters such as channels and threshold must be adjusted to fit at best the staining.
+
+Once this is set up, you can run ("Run for project") with the following script on QuPath that runs the classifier on all the annotations.
+
+
+```{}
+
+setImageType('FLUORESCENCE');
+selectAnnotations();
+createAnnotationsFromPixelClassifier("lipid_droplet_size", 1.0, 1.0, "SPLIT")
+
+``` 
+This create one annotation by "hole" that has the class : "lipid droplet" assigned
+
+Then you can save all the measurements 
+
+```{}
+
+import qupath.lib.gui.tools.MeasurementExporter
+import qupath.lib.objects.PathAnnotationObject
+
+// Get the list of all images in the current project
+def project = getProject()
+def imagesToExport = project.getImageList()
+
+// Separate each measurement value in the output file with a comma
+def separator = ","
+
+// Choose the columns that will be included in the export
+// Note: if 'columnsToInclude' is empty, all columns will be included
+// def columnsToInclude = new String[]{"Name", "Class", "Nucleus: Area"}
+def columnsToInclude = new String[]{}
+
+// Choose the type of objects that the export will process
+// Other possibilities include:
+//    1. PathAnnotationObject
+//    2. PathDetectionObject
+//    3. PathRootObject
+// Note: import statements should then be modified accordingly
+def exportType = PathAnnotationObject.class
+
+def Image_name = getCurrentViewer().getServer().getFile()
+
+// Choose your *full* output path
+var path = buildFilePath(PROJECT_BASE_DIR, "../Data/measurements.csv") // This is for architecture "main_project/Qupath_folder"
+
+def outputPath = path
+def outputFile = new File(outputPath)
+
+// Create the measurementExporter and start the export
+def exporter  = new MeasurementExporter()
+                  .imageList(imagesToExport)            // Images from which measurements will be exported
+                  .separator(separator)                 // Character that separates values
+                  .includeOnlyColumns(columnsToInclude) // Columns are case-sensitive
+                  .exportType(exportType)               // Type of objects to export
+                  .filter(obj -> obj.getPathClass() == getPathClass(lipid droplet))    // Keep only objects with class "lipid droplet"
+                  .exportMeasurements(outputFile)        // Start the export process
+
+
+
+``` 
+
+# Analysis on R
+
+```{}
+
+# Load Data ---------------------------------------------------------------
+
+# get script location as wd
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+df <- read.csv("Data/measurements.csv")
+
+# Clean ------------------------------------------------------------------- 
+
+# delete zones that are bigger than 3000 µm^2
+# This is based on observations of the slides where annotations bigger than 3000 µm^2 are artifacts 
+
+df <- subset(df,
+             Area.Âµm.2 <= 3000)
+
+# Start working -----------------------------------------------------------
+
+df$Parent <- factor(df$Parent,
+                    levels = c("Condition1",
+                               "Condition2")) # corresponds to annotations' names 
+
+# Generate a density plot of the droplets size distribution
+
+ggplot(df)+
+  aes(x = (Area.Âµm.2),
+      fill = Parent)+
+  geom_density(alpha = 0.5)+
+  theme_classic(base_size = 6)+
+  theme(legend.position = "none")+
+  scale_fill_viridis_d()+
+  xlim(-100, NA)
+
+chisq.test(df$Area.Âµm.2,
+           df$Parent)
+
+```
